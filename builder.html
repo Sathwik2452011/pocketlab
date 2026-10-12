@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>PocketLab demo builder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#0e0f1f;--ink:#eceefb;--mut:#a4a9cc;--ac:#6d5dfc;--pn:#171934;--ln:#2d3060;--ok:#4ade80;--bad:#fb923c;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+.w{max-width:900px;margin:0 auto;padding:20px}h1,h2,h3,h4{margin:.4em 0}
+.p{background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:16px;margin:14px 0}
+button{font:inherit;cursor:pointer;border:1.5px solid var(--ln);background:var(--pn);color:var(--ink);padding:7px 12px;border-radius:9px}
+button:hover{border-color:var(--ac)}.pri{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+input,select,textarea{font:inherit;width:100%;padding:7px;border:1.5px solid var(--ln);border-radius:9px;background:var(--bg);color:var(--ink);margin:3px 0}
+label{display:block;font-size:14px;color:var(--mut);margin-top:8px}.sm{font-size:13px;color:var(--mut)}
+.ph{position:relative;line-height:0;border-radius:10px;overflow:hidden;cursor:crosshair;margin:8px 0}.ph img{width:100%;display:block}
+.pn{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--ac);border:2px solid #fff;font:700 13px/22px system-ui;text-align:center}.pn.on{background:#f59e0b}
+.ar{display:grid;grid-template-columns:90px 1fr 2fr 36px;gap:6px;align-items:center}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.er{color:var(--bad)}.okc{color:var(--ok)}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+</style></head><body><div class="w">
+<h1>PocketLab demo builder</h1>
+<p class="sm">Make your demo images in ChatGPT (or anywhere), then add them here with labels, a quiz and experiments. Download <b>saved.json</b> and upload it to the root of your GitHub repo. Nothing here is sent anywhere; it all stays in your browser.</p>
+<div class="p"><b>Tips for the ChatGPT images:</b> ask for a cinematic 16:9 illustration, and add <i>"no text, letters, numbers or labels in the image"</i> because PocketLab draws the labels on top. For each experiment, ask for "the same scene and composition, but [the change]" so before and after look alike. Keep one variable with 2 or 3 options per question to limit how many images you need.</div>
+<div class="row"><button class="pri" onclick="addEntry()">+ Add demo question</button><label style="margin:0">Continue from an existing saved.json <input type="file" accept="application/json" onchange="importJson(this)"></label></div>
+<div id="app"></div></div>
+<script>
+const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let REG={},ARM=null;const B={entries:[],cur:0,msg:'',errs:[],warns:[]};
+const ckey=ch=>JSON.stringify(Object.entries(ch).sort()),E=()=>B.entries[B.cur];
+const blank=()=>({question:'',approach:'explain',provider:'ChatGPT',model:'image generation',image:'',headline:'',annotations:[],quiz:{q:'',options:['','',''],answer:0,why:''},variables:[],exps:{},useRef:false,refImage:'',refSummary:''});
+function squash(src){return new Promise(res=>{const im=new Image();im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.82))};im.onerror=()=>res(src);im.src=src})}
+function readImg(input,cb){const f=input.files[0];if(!f)return;if(!/^image\/(png|jpeg|webp)$/.test(f.type)||f.size>15e6){B.msg='Use a PNG, JPEG or WebP image under 15 MB.';return render()}const fr=new FileReader();fr.onload=async()=>{cb(await squash(fr.result));B.msg='';render()};fr.readAsDataURL(f)}
+function addEntry(){B.entries.push(blank());B.cur=B.entries.length-1;ARM=null;render()}
+function delEntry(){B.entries.splice(B.cur,1);B.cur=Math.max(0,B.cur-1);ARM=null;render()}
+function annEd(id,list,src){REG[id]=list;
+ return `<div>${src?`<div class="ph" onclick="place(event,'${id}')"><img src="${src}" alt="">${list.map((a,i)=>`<div class="pn ${ARM&&ARM.id===id&&ARM.i===i?'on':''}" style="left:${a.x}%;top:${a.y}%">${i+1}</div>`).join('')}</div><p class="sm">${ARM&&ARM.id===id?'Click the image to place pin '+(ARM.i+1)+'.':'Press "place" on a label, then click the object in the image.'}</p>`:'<p class="sm">Upload an image first.</p>'}
+ ${list.map((a,i)=>`<div class="ar"><button onclick="arm('${id}',${i})">${i+1}: place</button><input value="${esc(a.label)}" placeholder="Label (max 3 words)" oninput="REG['${id}'][${i}].label=this.value"><input value="${esc(a.text)}" placeholder="One sentence explaining it" oninput="REG['${id}'][${i}].text=this.value"><button onclick="rmAnn('${id}',${i})" aria-label="Remove">x</button></div>`).join('')}
+ <button onclick="addAnn('${id}')">+ Add label</button></div>`}
+function place(ev,id){if(!ARM||ARM.id!==id)return;const r=ev.currentTarget.getBoundingClientRect(),a=REG[id][ARM.i];a.x=Math.max(3,Math.min(97,Math.round((ev.clientX-r.left)/r.width*100)));a.y=Math.max(3,Math.min(97,Math.round((ev.clientY-r.top)/r.height*100)));ARM=null;render()}
+function arm(id,i){ARM={id,i};render()}function addAnn(id){REG[id].push({label:'',text:'',x:50,y:50});ARM={id,i:REG[id].length-1};render()}function rmAnn(id,i){REG[id].splice(i,1);ARM=null;render()}
+const T=s=>s.trim();
+function render(){REG={};const e=E();
+ const tabs=B.entries.map((x,i)=>`<button class="${i===B.cur?'pri':''}" onclick="B.cur=${i};ARM=null;render()">${i+1}. ${esc((x.question||'untitled').slice(0,28))}</button>`).join('');
+ if(!e){$('#app').innerHTML='<p class="sm">No demo questions yet. Press "+ Add demo question".</p>';return}
+ const ex=[];e.variables.forEach((v,vi)=>{if(!T(v.name))return;v.options.forEach((o,oi)=>{if(!T(o))return;const k=ckey({[T(v.name)]:T(o)}),x=e.exps[k]||(e.exps[k]={image:'',headline:'',changes:[]});
+  ex.push(`<div class="p"><h4>Experiment: ${esc(T(v.name))} = ${esc(T(o))}</h4><label>Image for this result<input type="file" accept="image/*" onchange="readImg(this,d=>E().exps[${JSON.stringify(k).replace(/"/g,'&quot;')}].image=d)"></label><label>Headline (what changed)<input value="${esc(x.headline)}" oninput="E().exps[${JSON.stringify(k).replace(/"/g,'&quot;')}].headline=this.value"></label>${annEd('x'+vi+'_'+oi,x.changes,x.image)}</div>`)})});
+ $('#app').innerHTML=`<div class="row">${tabs}</div>${B.msg?`<p class="er">${esc(B.msg)}</p>`:''}
+ <div class="p"><h2>Question ${B.cur+1}</h2><label>Question (the exact wording you will type or click in the demo)<input value="${esc(e.question)}" oninput="E().question=this.value;"></label>
+ <div class="g3"><label>Approach<select onchange="E().approach=this.value"><option value="explain" ${e.approach==='explain'?'selected':''}>Explain a concept visually</option><option value="compare" ${e.approach==='compare'?'selected':''}>Before-and-after comparison</option><option value="invisible" ${e.approach==='invisible'?'selected':''}>Visualise an invisible process</option><option value="steps" ${e.approach==='steps'?'selected':''}>Step-by-step guide</option><option value="two" ${e.approach==='two'?'selected':''}>Compare two scenarios</option><option value="sketch" ${e.approach==='sketch'?'selected':''}>Transform my sketch</option></select></label><label>Made with<input value="${esc(e.provider)}" oninput="E().provider=this.value"></label><label>Model / tool<input value="${esc(e.model)}" oninput="E().model=this.value"></label></div>
+ <label>Main image<input type="file" accept="image/*" onchange="readImg(this,d=>E().image=d)"></label><label>Headline shown on the image (the key idea, one sentence)<input value="${esc(e.headline)}" oninput="E().headline=this.value"></label>
+ <h3>Labels on the image</h3>${annEd('main',e.annotations,e.image)}</div>
+ <div class="p"><h3>Quiz (optional)</h3><label>Question<input value="${esc(e.quiz.q)}" oninput="E().quiz.q=this.value"></label>${e.quiz.options.map((o,i)=>`<label>Option ${i+1}<input value="${esc(o)}" oninput="E().quiz.options[${i}]=this.value"></label>`).join('')}<label>Correct option<select onchange="E().quiz.answer=+this.value">${[0,1,2].map(i=>`<option value="${i}" ${e.quiz.answer===i?'selected':''}>Option ${i+1}</option>`).join('')}</select></label><label>Why (one sentence)<input value="${esc(e.quiz.why)}" oninput="E().quiz.why=this.value"></label></div>
+ <div class="p"><h3>Experiment variables (optional)</h3><p class="sm">Each option needs its own image below. Keep it to 1 or 2 variables.</p>${e.variables.map((v,vi)=>`<div class="g3"><label>Variable name<input value="${esc(v.name)}" onchange="E().variables[${vi}].name=this.value;render()"></label>${v.options.map((o,oi)=>`<label>Option ${oi+1}<input value="${esc(o)}" onchange="E().variables[${vi}].options[${oi}]=this.value;render()"></label>`).join('')}</div><button onclick="E().variables.splice(${vi},1);render()">Remove variable</button>`).join('')}${e.variables.length<3?'<div class="row"><button onclick="E().variables.push({name:\'\',options:[\'\',\'\',\'\']});render()">+ Add variable</button></div>':''}</div>
+ ${ex.join('')}
+ <div class="p"><h3>Demo with an uploaded image (optional)</h3><p class="sm">Shows the visitor a "demo upload" you prepared: the image they supposedly gave, and the result made from it. It is labelled as prepared in advance.</p><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto" ${e.useRef?'checked':''} onchange="E().useRef=this.checked;render()"> Include a demo upload for this question</label>${e.useRef?`<label>The uploaded image<input type="file" accept="image/*" onchange="readImg(this,d=>E().refImage=d)"></label>${e.refImage?`<img src="${e.refImage}" alt="" style="height:80px;border-radius:8px">`:''}<label>What the upload shows (one or two sentences)<textarea rows="2" oninput="E().refSummary=this.value">${esc(e.refSummary)}</textarea></label>`:''}</div>
+ <div class="row"><button onclick="delEntry()">Delete this question</button></div>
+ <div class="p"><h3>Finish</h3>${B.errs.map(x=>`<p class="er">${esc(x)}</p>`).join('')}${B.warns.map(x=>`<p class="sm">Note: ${esc(x)}</p>`).join('')}<button class="pri" onclick="exportJson()">Download saved.json</button><p class="sm">Then upload it to the root of your GitHub repo, replacing the old saved.json.</p></div>`}
+function build(){const out=[],er=[],wn=[];B.entries.forEach((e,n)=>{const t='Question '+(n+1)+': ';
+ if(!T(e.question))er.push(t+'the question is empty.');if(!e.image)er.push(t+'the main image is missing.');
+ const an=e.annotations.filter(a=>T(a.label)&&T(a.text)).map(a=>({label:T(a.label),text:T(a.text),x:a.x,y:a.y}));if(!an.length)er.push(t+'add at least one label with its explanation.');
+ const q=e.quiz,okQ=T(q.q)&&q.options.every(o=>T(o)),vars=e.variables.filter(v=>T(v.name)&&v.options.every(o=>T(o))).map(v=>({name:T(v.name),options:v.options.map(T)}));
+ const exps={};vars.forEach(v=>v.options.forEach(o=>{const k=ckey({[v.name]:o}),x=e.exps[k];if(!x||!x.image){wn.push(t+'no image for '+v.name+' = '+o+' (it will show "not saved").');return}exps[k]={image:x.image,info:{headline:T(x.headline||''),changes:x.changes.filter(a=>T(a.label)&&T(a.text)).map(a=>({label:T(a.label),text:T(a.text),x:a.x,y:a.y}))}}}));
+ if(e.useRef&&(!e.refImage||!T(e.refSummary)))er.push(t+'the demo upload needs an image and a description.');
+ out.push({question:T(e.question),approach:e.approach,provider:T(e.provider)||'ChatGPT',model:T(e.model),savedAt:new Date().toISOString(),image:e.image,info:{scene:'',headline:T(e.headline),annotations:an,quiz:okQ?{q:T(q.q),options:q.options.map(T),answer:q.answer,why:T(q.why)}:null,variables:vars},exps,ref:e.useRef&&e.refImage?{image:e.refImage,summary:T(e.refSummary)}:undefined})});
+ return{out,er,wn}}
+function exportJson(){const r=build();B.errs=r.er;B.warns=r.wn;if(r.er.length)return render();
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(r.out)],{type:'application/json'}));a.download='saved.json';a.click();render()}
+function importJson(inp){const f=inp.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const l=JSON.parse(fr.result);if(!Array.isArray(l))throw 0;l.forEach(s=>{const e=blank();Object.assign(e,{question:s.question||'',approach:s.approach||'explain',provider:s.provider||'',model:s.model||'',image:s.image||'',headline:(s.info&&s.info.headline)||'',annotations:(s.info&&s.info.annotations)||[],variables:(s.info&&s.info.variables)||[]});
+  if(s.info&&s.info.quiz)e.quiz={...s.info.quiz};Object.entries(s.exps||{}).forEach(([k,x])=>e.exps[k]={image:x.image,headline:(x.info&&x.info.headline)||'',changes:(x.info&&x.info.changes)||[]});if(s.ref){e.useRef=true;e.refImage=s.ref.image;e.refSummary=s.ref.summary}B.entries.push(e)});B.cur=0;B.msg='';render()}catch{B.msg='That file is not a valid saved.json.';render()}};fr.readAsText(f)}
+render();
+</script></body></html>
